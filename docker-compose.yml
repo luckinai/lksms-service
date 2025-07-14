@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: lksms-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lksms_db}
+      POSTGRES_USER: ${POSTGRES_USER:-lksms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lksms_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - lksms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lksms_user} -d ${POSTGRES_DB:-lksms_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LKSMS服务
+  lksms-service:
+    build: .
+    container_name: lksms-service
+    environment:
+      # 数据库连接参数（应用内部拼接DATABASE_URL）
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-lksms_db}
+      POSTGRES_USER: ${POSTGRES_USER:-lksms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lksms_password}
+      # 应用配置
+      BASIC_AUTH_USERNAME: ${BASIC_AUTH_USERNAME:-admin}
+      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-your_secure_password}
+      APP_HOST: ${APP_HOST:-0.0.0.0}
+      APP_PORT: ${APP_PORT:-8000}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 重试配置
+      MAX_RETRY_COUNT: ${MAX_RETRY_COUNT:-3}
+      RETRY_DELAY_MINUTES: ${RETRY_DELAY_MINUTES:-5}
+      PROCESSING_TIMEOUT_MINUTES: ${PROCESSING_TIMEOUT_MINUTES:-30}
+      # 文档配置
+      ENABLE_DOCS: ${ENABLE_DOCS:-true}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lksms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+
+networks:
+  lksms-network:
+    driver: bridge
