@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update, and_, func, case
 from datetime import datetime
 
 from app.models.sms_task import SmsTask
@@ -87,25 +87,42 @@ class SmsService:
     async def get_pending_tasks_safely(self, app_id: str, limit: int = 10) -> List[SmsTask]:
         """
         安全地获取待处理任务（并发控制）
-        
+        优先获取新任务（retry_count=0），无新任务时获取重试任务
+
         Args:
             app_id: APP标识
             limit: 获取数量限制
-            
+
         Returns:
             List[SmsTask]: 获取到的任务列表
         """
         async with self.db.begin():
-            # 使用FOR UPDATE SKIP LOCKED确保并发安全
-            query = select(SmsTask).where(
-                SmsTask.status == TaskStatus.PENDING
+            # 1. 优先获取新任务（retry_count=0）
+            new_task_query = select(SmsTask).where(
+                and_(
+                    SmsTask.status == TaskStatus.PENDING,
+                    SmsTask.retry_count == 0
+                )
             ).order_by(SmsTask.created_at).limit(limit).with_for_update(skip_locked=True)
-            
-            result = await self.db.execute(query)
-            tasks = result.scalars().all()
-            
+
+            result = await self.db.execute(new_task_query)
+            tasks = list(result.scalars().all())
+
+            # 2. 如果新任务不足，获取重试任务
+            if len(tasks) < limit:
+                remaining_limit = limit - len(tasks)
+                retry_task_query = select(SmsTask).where(
+                    and_(
+                        SmsTask.status == TaskStatus.PENDING,
+                        SmsTask.retry_count > 0
+                    )
+                ).order_by(SmsTask.retry_count, SmsTask.created_at).limit(remaining_limit).with_for_update(skip_locked=True)
+
+                retry_result = await self.db.execute(retry_task_query)
+                tasks.extend(list(retry_result.scalars().all()))
+
+            # 3. 原子性更新状态
             if tasks:
-                # 原子性更新状态
                 task_ids = [task.id for task in tasks]
                 update_query = update(SmsTask).where(
                     SmsTask.id.in_(task_ids)
@@ -115,14 +132,14 @@ class SmsService:
                     updated_at=datetime.now()
                 )
                 await self.db.execute(update_query)
-        
-        return list(tasks)
+
+        return tasks
     
     async def update_task_status(
         self,
         task_id: str,
         status: TaskStatus,
-        error_message: Optional[str] = None,
+        result_message: Optional[str] = None,
         should_retry: bool = False
     ) -> bool:
         """
@@ -131,21 +148,21 @@ class SmsService:
         Args:
             task_id: 任务ID
             status: 新状态
-            error_message: 错误信息（失败时）
-            should_retry: 是否应该重试（失败时）
+            result_message: 结果信息（成功或失败原因）
+            should_retry: 是否应该重试（由APP判断）
 
         Returns:
             bool: 是否更新成功
         """
-        # 如果是失败状态且需要重试，则使用重试服务处理
+        # 如果是失败状态且APP判断需要重试
         if status == TaskStatus.FAILED and should_retry:
-            from app.services.retry_service import RetryService
-            retry_service = RetryService(self.db)
-            return await retry_service.mark_task_for_retry(task_id, error_message or "")
+            return await self._mark_task_for_retry(task_id, result_message or "")
 
         update_data = {
             "status": status,
-            "updated_at": datetime.now()
+            "result": result_message,
+            "updated_at": datetime.now(),
+            "reported_at": datetime.now()
         }
 
         if status == TaskStatus.SUCCESS:
@@ -153,8 +170,6 @@ class SmsService:
         elif status == TaskStatus.FAILED:
             # 最终失败，清除处理APP ID
             update_data["processing_app_id"] = None
-
-        update_data["reported_at"] = datetime.now()
 
         query = update(SmsTask).where(
             SmsTask.task_id == task_id
@@ -164,6 +179,60 @@ class SmsService:
         await self.db.commit()
 
         return result.rowcount > 0
+
+    async def _mark_task_for_retry(self, task_id: str, result_message: str) -> bool:
+        """
+        标记任务为重试
+
+        Args:
+            task_id: 任务ID
+            result_message: 失败原因
+
+        Returns:
+            bool: 是否成功标记为重试
+        """
+        from app.config import settings
+
+        # 获取当前任务
+        query = select(SmsTask).where(SmsTask.task_id == task_id)
+        result = await self.db.execute(query)
+        task = result.scalar_one_or_none()
+
+        if not task:
+            return False
+
+        # 检查是否超过最大重试次数
+        if task.retry_count >= settings.max_retry_count:
+            # 超过最大重试次数，标记为最终失败
+            update_query = update(SmsTask).where(
+                SmsTask.task_id == task_id
+            ).values(
+                status=TaskStatus.FAILED,
+                result=f"超过最大重试次数({settings.max_retry_count})：{result_message}",
+                processing_app_id=None,
+                updated_at=datetime.now(),
+                reported_at=datetime.now()
+            )
+            await self.db.execute(update_query)
+            await self.db.commit()
+            return False
+
+        # 增加重试次数并重置状态为PENDING
+        update_query = update(SmsTask).where(
+            SmsTask.task_id == task_id
+        ).values(
+            status=TaskStatus.PENDING,
+            retry_count=task.retry_count + 1,
+            result=result_message,
+            processing_app_id=None,  # 清除处理APP ID
+            updated_at=datetime.now(),
+            reported_at=datetime.now()
+        )
+
+        await self.db.execute(update_query)
+        await self.db.commit()
+
+        return True
     
     async def _get_default_content(self, phone_number: str) -> Optional[DefaultSmsData]:
         """获取默认内容"""
@@ -201,3 +270,31 @@ class SmsService:
         await self.db.refresh(default_sms)
         
         return default_sms
+
+    async def get_task_statistics(self) -> 'TaskStatisticsResponse':
+        """
+        获取任务统计信息（使用高效的GROUP BY查询）
+
+        Returns:
+            TaskStatisticsResponse: 统计信息模型
+        """
+        from sqlalchemy import func, case
+        from app.schemas.admin import TaskStatisticsResponse
+
+        # 使用单个查询获取所有统计信息
+        query = select(
+            func.count(case((and_(SmsTask.status == TaskStatus.PENDING, SmsTask.retry_count == 0), 1))).label('pending_new'),
+            func.count(case((and_(SmsTask.status == TaskStatus.PENDING, SmsTask.retry_count > 0), 1))).label('pending_retry'),
+            func.count(case((SmsTask.status == TaskStatus.PROCESSING, 1))).label('processing'),
+            func.count(case((SmsTask.status == TaskStatus.FAILED, 1))).label('failed')
+        )
+
+        result = await self.db.execute(query)
+        stats = result.first()
+
+        return TaskStatisticsResponse(
+            pending_new_tasks=stats.pending_new or 0,
+            pending_retry_tasks=stats.pending_retry or 0,
+            processing_tasks=stats.processing or 0,
+            failed_tasks=stats.failed or 0
+        )

@@ -14,6 +14,7 @@ class SmsTask(Base):
     source = Column(String(50), comment="来源标识")
     retry_count = Column(Integer, default=0, comment="重试次数")
     processing_app_id = Column(String(50), index=True, comment="处理中的APP ID")
+    result = Column(String(500), comment="最后一次发送汇报结果，失败时记录失败原因")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="创建时间")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间")
     sent_at = Column(DateTime(timezone=True), comment="发送时间")

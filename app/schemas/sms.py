@@ -40,6 +40,7 @@ class ReportRequest(BaseModel):
     app_id: str = Field(..., description="APP标识")
     status: int = Field(..., description="发送状态: 2=SUCCESS, 3=FAILED")
     error_message: Optional[str] = Field(None, description="错误信息（失败时）", max_length=500)
+    should_retry: bool = Field(False, description="是否应该重试（由APP判断）")
 
 
 class DefaultSmsRequest(BaseModel):

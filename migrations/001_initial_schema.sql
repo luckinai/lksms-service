@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS sms_tasks (
     source VARCHAR(50),
     retry_count INTEGER DEFAULT 0,
     processing_app_id VARCHAR(50),
+    result VARCHAR(500),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     sent_at TIMESTAMP WITH TIME ZONE,
@@ -57,6 +58,7 @@ COMMENT ON COLUMN sms_tasks.status IS '任务状态: 0=PENDING, 1=PROCESSING, 2=
 COMMENT ON COLUMN sms_tasks.source IS '来源标识';
 COMMENT ON COLUMN sms_tasks.retry_count IS '重试次数';
 COMMENT ON COLUMN sms_tasks.processing_app_id IS '处理中的APP ID';
+COMMENT ON COLUMN sms_tasks.result IS '最后一次发送汇报结果，失败时记录失败原因';
 COMMENT ON COLUMN sms_tasks.sent_at IS '发送时间';
 COMMENT ON COLUMN sms_tasks.reported_at IS '汇报时间';
 

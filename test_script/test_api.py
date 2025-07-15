@@ -209,7 +209,8 @@ class LKSMSAPITester:
                 "task_id": task_id,
                 "app_id": "test_app_001",
                 "status": 2 if success else 3,
-                "error_message": "" if success else "发送失败测试"
+                "error_message": "" if success else "发送失败测试",
+                "should_retry": False if success else True  # 失败时测试重试
             }
             response = self._make_request("POST", "/api/v1/sms/report", json=data)
             return response.status_code == 200
@@ -224,8 +225,8 @@ class LKSMSAPITester:
         print("="*50)
 
         try:
-            # 测试获取重试统计
-            response1 = self._make_request("GET", "/api/v1/admin/retry-statistics")
+            # 测试获取任务统计
+            response1 = self._make_request("GET", "/api/v1/admin/task-statistics")
 
             # 测试获取任务状态信息
             response2 = self._make_request("GET", "/api/v1/admin/task-status-info")

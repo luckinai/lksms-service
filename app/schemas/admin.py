@@ -13,17 +13,15 @@ class RecoveredTaskInfo(BaseModel):
 class ZombieTaskRecoveryResponse(BaseModel):
     """僵尸任务恢复响应"""
     recovered_count: int = Field(..., description="恢复的任务数量")
-    recovered_tasks: List[RecoveredTaskInfo] = Field(..., description="恢复的任务列表")
+    message: str = Field(..., description="恢复结果消息")
 
 
-class RetryStatisticsResponse(BaseModel):
-    """重试统计响应"""
-    pending_tasks: int = Field(..., description="待处理任务数量")
+class TaskStatisticsResponse(BaseModel):
+    """任务统计响应"""
+    pending_new_tasks: int = Field(..., description="待处理新任务数量（retry_count=0）")
+    pending_retry_tasks: int = Field(..., description="待处理重试任务数量（retry_count>0）")
     processing_tasks: int = Field(..., description="正在处理任务数量")
-    retry_tasks: int = Field(..., description="重试任务数量")
-    max_retry_count: int = Field(..., description="最大重试次数配置")
-    retry_delay_minutes: int = Field(..., description="重试延迟时间配置（分钟）")
-    processing_timeout_minutes: int = Field(..., description="处理超时时间配置（分钟）")
+    failed_tasks: int = Field(..., description="失败任务数量")
 
 
 class TemplateResponse(BaseModel):

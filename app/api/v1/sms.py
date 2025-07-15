@@ -155,20 +155,15 @@ async def report_result(
     if report_request.status not in [TaskStatus.SUCCESS, TaskStatus.FAILED]:
         raise HTTPException(status_code=400, detail="无效的状态值")
 
-    # 判断是否需要重试（可以根据错误信息判断）
-    should_retry = False
-    if report_request.status == TaskStatus.FAILED and report_request.error_message:
-        # 这里可以根据错误信息判断是否需要重试
-        # 例如：网络错误、临时故障等可以重试
-        retryable_errors = ["网络错误", "超时", "服务暂不可用", "限流"]
-        should_retry = any(error in report_request.error_message for error in retryable_errors)
+    # 构建结果信息
+    result_message = "发送成功" if report_request.status == TaskStatus.SUCCESS else report_request.error_message
 
-    # 更新任务状态
+    # 更新任务状态（由APP判断是否重试）
     success = await sms_service.update_task_status(
         task_id=report_request.task_id,
         status=TaskStatus(report_request.status),
-        error_message=report_request.error_message,
-        should_retry=should_retry
+        result_message=result_message,
+        should_retry=report_request.should_retry
     )
     
     if not success:

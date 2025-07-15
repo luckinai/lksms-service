@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
-from app.services.retry_service import RetryService
+from app.services.zombie_task_service import ZombieTaskService
 
 logger = logging.getLogger(__name__)
 
@@ -40,35 +40,25 @@ class SchedulerService:
     async def _recover_zombie_tasks(self):
         """恢复僵尸任务"""
         async with AsyncSessionLocal() as db:
-            retry_service = RetryService(db)
-            
+            zombie_service = ZombieTaskService(db)
+
             # 恢复僵尸任务
-            zombie_tasks = await retry_service.recover_zombie_tasks()
-            
-            if zombie_tasks:
-                logger.info(f"恢复了 {len(zombie_tasks)} 个僵尸任务")
-                for task in zombie_tasks:
-                    logger.info(f"恢复任务: {task.task_id}, 重试次数: {task.retry_count}")
+            recovered_count = await zombie_service.recover_zombie_tasks()
+
+            if recovered_count > 0:
+                logger.info(f"恢复了 {recovered_count} 个僵尸任务")
             else:
                 logger.debug("没有发现僵尸任务")
-    
+
     async def manual_recover_zombie_tasks(self) -> dict:
         """手动恢复僵尸任务"""
         async with AsyncSessionLocal() as db:
-            retry_service = RetryService(db)
-            zombie_tasks = await retry_service.recover_zombie_tasks()
-            
+            zombie_service = ZombieTaskService(db)
+            recovered_count = await zombie_service.recover_zombie_tasks()
+
             return {
-                "recovered_count": len(zombie_tasks),
-                "recovered_tasks": [
-                    {
-                        "task_id": task.task_id,
-                        "phone_number": task.phone_number,
-                        "retry_count": task.retry_count,
-                        "processing_app_id": task.processing_app_id
-                    }
-                    for task in zombie_tasks
-                ]
+                "recovered_count": recovered_count,
+                "message": f"成功恢复 {recovered_count} 个僵尸任务"
             }
 
 

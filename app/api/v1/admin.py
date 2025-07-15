@@ -6,12 +6,12 @@ from app.database import get_db
 from app.auth import verify_credentials
 from app.services.sms_service import SmsService
 from app.services.template_service import TemplateService
-from app.services.retry_service import RetryService
+
 from app.services.scheduler_service import scheduler
 from app.schemas.sms import DefaultSmsRequest, TemplateRequest, TaskStatusInfo
 from app.schemas.admin import (
     ZombieTaskRecoveryResponse,
-    RetryStatisticsResponse,
+    TaskStatisticsResponse,
     TemplateResponse,
     DefaultSmsResponse
 )
@@ -86,7 +86,7 @@ async def recover_zombie_tasks(
 
         response_data = ZombieTaskRecoveryResponse(
             recovered_count=result["recovered_count"],
-            recovered_tasks=result["recovered_tasks"]
+            message=result["message"]
         )
 
         return ApiResponse(data=response_data, message=f"成功恢复 {result['recovered_count']} 个僵尸任务")
@@ -94,26 +94,17 @@ async def recover_zombie_tasks(
         raise HTTPException(status_code=500, detail=f"恢复僵尸任务失败: {str(e)}")
 
 
-@router.get("/retry-statistics", response_model=ApiResponse[RetryStatisticsResponse])
-async def get_retry_statistics(
+@router.get("/task-statistics", response_model=ApiResponse[TaskStatisticsResponse])
+async def get_task_statistics(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(verify_credentials)
 ):
-    """获取重试统计信息"""
+    """获取任务统计信息"""
     try:
-        retry_service = RetryService(db)
-        stats = await retry_service.get_retry_statistics()
+        sms_service = SmsService(db)
+        stats = await sms_service.get_task_statistics()
 
-        response_data = RetryStatisticsResponse(
-            pending_tasks=stats["pending_tasks"],
-            processing_tasks=stats["processing_tasks"],
-            retry_tasks=stats["retry_tasks"],
-            max_retry_count=stats["max_retry_count"],
-            retry_delay_minutes=stats["retry_delay_minutes"],
-            processing_timeout_minutes=stats["processing_timeout_minutes"]
-        )
-
-        return ApiResponse(data=response_data, message="获取统计信息成功")
+        return ApiResponse(data=stats, message="获取统计信息成功")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
 
