@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_, func, case
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.models.sms_task import SmsTask
 from app.models.default_sms import DefaultSmsData
@@ -108,13 +108,21 @@ class SmsService:
             result = await self.db.execute(new_task_query)
             tasks = list(result.scalars().all())
 
-            # 2. 如果新任务不足，获取重试任务
+            # 2. 如果新任务不足，获取重试任务（考虑重试间隔）
             if len(tasks) < limit:
+                from app.config import settings
+
+                # 计算重试延迟时间阈值
+                retry_delay_minutes = settings.retry_delay_minutes
+                retry_threshold = datetime.now() - timedelta(minutes=retry_delay_minutes)
+
                 remaining_limit = limit - len(tasks)
                 retry_task_query = select(SmsTask).where(
                     and_(
                         SmsTask.status == TaskStatus.PENDING,
-                        SmsTask.retry_count > 0
+                        SmsTask.retry_count > 0,
+                        # 只获取已经等待足够时间的重试任务
+                        SmsTask.updated_at <= retry_threshold
                     )
                 ).order_by(SmsTask.retry_count, SmsTask.created_at).limit(remaining_limit).with_for_update(skip_locked=True)
 

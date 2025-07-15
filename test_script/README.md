@@ -17,6 +17,17 @@
 8. **获取待处理任务** - 测试APP轮询功能
 9. **汇报发送结果** - 测试结果汇报功能
 
+### test_retry_delay.py
+重试间隔机制测试脚本，验证以下功能：
+
+1. **重试间隔控制** - 验证重试任务是否遵循RETRY_DELAY_MINUTES配置
+2. **任务创建** - 创建测试任务
+3. **任务获取** - 获取新创建的任务
+4. **失败汇报** - 汇报失败并要求重试
+5. **间隔验证** - 验证在重试间隔内无法获取重试任务
+6. **延时获取** - 验证在重试间隔后可以获取重试任务
+7. **统计查询** - 验证任务统计功能
+
 ## 🚀 使用方法
 
 ### 前提条件
@@ -42,8 +53,11 @@ docker-compose up -d
 # 等待服务启动完成
 sleep 10
 
-# 运行测试
-python test_script/test_api.py http://localhost:8000 admin your_secure_password
+# 运行API功能测试
+python test_script/test_api.py
+
+# 运行重试间隔测试
+python test_script/test_retry_delay.py http://localhost:8000 admin your_secure_password
 ```
 
 ## 📊 测试结果

@@ -184,11 +184,15 @@ Authorization: Basic <base64(username:password)>
    - 新任务（retry_count=0）优先处理
    - 重试任务（retry_count>0）按重试次数和创建时间排序
 
-2. **并发控制**：
+2. **重试间隔控制**：
+   - 重试任务需要等待配置的间隔时间（默认5分钟）
+   - 避免频繁重试同一任务，给外部系统恢复时间
+
+3. **并发控制**：
    - 使用数据库行锁（FOR UPDATE SKIP LOCKED）
    - 防止多个APP获取相同任务
 
-3. **自动恢复**：
+4. **自动恢复**：
    - 每5分钟检测僵尸任务
    - 超时任务自动重试或标记失败
 
@@ -237,6 +241,7 @@ python test_script/test_api.py
 ### 测试覆盖的新功能：
 - 任务优先级调度测试
 - APP主导重试机制测试
+- 重试间隔控制测试
 - 僵尸任务恢复测试
 - 高效统计查询测试
 
@@ -262,7 +267,7 @@ python test_script/test_api.py
 | LOG_LEVEL | 日志级别 | INFO |
 | **重试配置** | | |
 | MAX_RETRY_COUNT | 最大重试次数 | 3 |
-| RETRY_DELAY_MINUTES | 重试延迟(分钟) | 5 |
+| RETRY_DELAY_MINUTES | 重试间隔时间(分钟) | 5 |
 | PROCESSING_TIMEOUT_MINUTES | 处理超时(分钟) | 30 |
 | **文档配置** | | |
 | ENABLE_DOCS | 启用API文档 | true |
