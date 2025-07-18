@@ -21,6 +21,7 @@ class TaskStatisticsResponse(BaseModel):
     pending_new_tasks: int = Field(..., description="待处理新任务数量（retry_count=0）")
     pending_retry_tasks: int = Field(..., description="待处理重试任务数量（retry_count>0）")
     processing_tasks: int = Field(..., description="正在处理任务数量")
+    success_tasks: int = Field(..., description="成功任务数量")
     failed_tasks: int = Field(..., description="失败任务数量")
 
 

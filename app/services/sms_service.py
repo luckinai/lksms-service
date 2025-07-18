@@ -8,7 +8,8 @@ from app.models.default_sms import DefaultSmsData
 from app.utils.enums import TaskStatus
 from app.utils.helpers import generate_task_id
 from app.services.template_service import TemplateService
-
+from sqlalchemy import func, case
+from app.schemas.admin import TaskStatisticsResponse
 
 class SmsService:
     """短信服务"""
@@ -279,21 +280,21 @@ class SmsService:
         
         return default_sms
 
-    async def get_task_statistics(self) -> 'TaskStatisticsResponse':
+    async def get_task_statistics(self) -> TaskStatisticsResponse:
         """
         获取任务统计信息（使用高效的GROUP BY查询）
 
         Returns:
             TaskStatisticsResponse: 统计信息模型
         """
-        from sqlalchemy import func, case
-        from app.schemas.admin import TaskStatisticsResponse
+
 
         # 使用单个查询获取所有统计信息
         query = select(
             func.count(case((and_(SmsTask.status == TaskStatus.PENDING, SmsTask.retry_count == 0), 1))).label('pending_new'),
             func.count(case((and_(SmsTask.status == TaskStatus.PENDING, SmsTask.retry_count > 0), 1))).label('pending_retry'),
             func.count(case((SmsTask.status == TaskStatus.PROCESSING, 1))).label('processing'),
+            func.count(case((SmsTask.status == TaskStatus.SUCCESS, 1))).label('success'),
             func.count(case((SmsTask.status == TaskStatus.FAILED, 1))).label('failed')
         )
 
@@ -304,5 +305,6 @@ class SmsService:
             pending_new_tasks=stats.pending_new or 0,
             pending_retry_tasks=stats.pending_retry or 0,
             processing_tasks=stats.processing or 0,
+            success_tasks=stats.success or 0,
             failed_tasks=stats.failed or 0
         )
